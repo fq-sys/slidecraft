@@ -1,24 +1,30 @@
-import { NextApiRequest, NextApiResponse } from "next"
-import dbConnect from "@/lib/dbConnect"
-import User from "@/models/User"
-import { getToken } from "next-auth/jwt"
-import Audit from "@/models/Audit"
+import { NextApiRequest,NextApiResponse } from "next"
+import clientPromise from "@/lib/mongodb"
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "../auth/[...nextauth]"
 
 export default async function handler(req:NextApiRequest,res:NextApiResponse){
-  await dbConnect()
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if(!token || token.role!=="admin") return res.status(401).json({ error:"Unauthorized" })
+  const session = await getServerSession(req,res,authOptions)
+  if(!session || session.user.role!=="admin") return res.status(403).json({error:"Forbidden"})
 
-  if(req.method==="GET"){ const users = await User.find({}, "username email role isPro createdAt lastLoginAt"); return res.json(users) }
-
+  const client = await clientPromise
+  const db = client.db("slidecraft")
+  
   if(req.method==="POST"){
-    const { userId, action } = req.body
-    const user = await User.findById(userId)
-    if(!user) return res.status(404).json({ error:"User not found" })
-    if(action==="makePro"){ user.isPro=true; await user.save(); await Audit.create({userId:token.sub, action:`gave_pro_to_${userId}`}); return res.json({ok:true,message:`${user.username} Pro edildi`}) }
-    if(action==="revokePro"){ user.isPro=false; await user.save(); await Audit.create({userId:token.sub, action:`revoked_pro_from_${userId}`}); return res.json({ok:true,message:`${user.username} Pro geri alındı`}) }
-    return res.status(400).json({ error:"Invalid action" })
+    const { email, action } = req.body
+    const user = await db.collection("users").findOne({ email })
+    if(!user) return res.status(404).json({error:"User not found"})
+    
+    if(action==="makePro") await db.collection("users").updateOne({email},{$set:{isPro:true}})
+    if(action==="revokePro") await db.collection("users").updateOne({email},{$set:{isPro:false}})
+    
+    return res.json({ok:true})
   }
 
-  return res.status(405).json({ error:"Method not allowed" })
+  if(req.method==="GET"){
+    const users = await db.collection("users").find({}).toArray()
+    return res.json({users})
+  }
+
+  return res.status(405).json({error:"Method not allowed"})
 }
