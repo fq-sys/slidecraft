@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth/next"
 import { authOptions } from "../auth/[...nextauth]"
 
 export default async function handler(req:NextApiRequest,res:NextApiResponse){
-  const session = await getServerSession(req,res,authOptions)
+  const session = await getServerSession(req,res,authOptions as any)
   if(!session || session.user.role!=="admin") return res.status(403).json({error:"Forbidden"})
 
   const client = await clientPromise
