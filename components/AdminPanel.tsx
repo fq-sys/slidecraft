@@ -1,80 +1,62 @@
-import React, { useEffect, useState } from "react"
-import { useSession } from "next-auth/react"
+"use client"
+import React, { useState, useEffect } from "react"
 
-interface User {
-  _id: string
-  username: string
-  email: string
-  role: string
-  isPro: boolean
-  createdAt: string
-  lastLoginAt: string
-}
+interface User { email:string, username:string, isPro:boolean, role:string }
 
-export default function AdminPanel() {
-  const { data: session } = useSession()
-  const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+export default function AdminPanel(){
+  const [users,setUsers] = useState<User[]>([])
+  const [loading,setLoading] = useState(false)
+  const [error,setError] = useState("")
 
   const fetchUsers = async () => {
-    setLoading(true)
-    try {
+    setLoading(true); setError("")
+    try{
       const res = await fetch("/api/admin/users")
       const data = await res.json()
-      setUsers(data)
-    } catch (err: any) {
-      setError(err.message)
-    }
+      if(data.error) setError(data.error)
+      else setUsers(data.users)
+    }catch(err:any){ setError(err.message) }
     setLoading(false)
   }
 
-  const handlePro = async (userId: string, action: "makePro" | "revokePro") => {
-    try {
-      const res = await fetch("/api/admin/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, action })
+  const togglePro = async (email:string,makePro:boolean) => {
+    try{
+      const res = await fetch("/api/admin/users",{ 
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ email, action: makePro ? "makePro" : "revokePro" })
       })
       const data = await res.json()
-      if (!data.ok) throw new Error(data.error)
-      fetchUsers()
-    } catch (err: any) {
-      setError(err.message)
-    }
+      if(data.ok) fetchUsers()
+    }catch(err){ console.log(err) }
   }
 
-  useEffect(() => { fetchUsers() }, [])
-
-  if (!session || session.user.role !== "admin") return <p>Unauthorized</p>
+  useEffect(()=>{ fetchUsers() },[])
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Admin Panel</h1>
+    <div style={{ marginTop:20 }}>
+      <h2>Admin Panel</h2>
       {loading && <p>Yüklənir...</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && <p style={{ color:"red" }}>{error}</p>}
       <table border={1} cellPadding={5}>
         <thead>
           <tr>
-            <th>Username</th>
             <th>Email</th>
-            <th>Role</th>
+            <th>Username</th>
             <th>Pro</th>
-            <th>Actions</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
-          {users.map(u => (
-            <tr key={u._id}>
-              <td>{u.username}</td>
+          {users.map(u=>(
+            <tr key={u.email}>
               <td>{u.email}</td>
-              <td>{u.role}</td>
-              <td>{u.isPro ? "✅" : "❌"}</td>
+              <td>{u.username}</td>
+              <td>{u.isPro ? "Yes" : "No"}</td>
               <td>
-                {!u.isPro ? 
-                  <button onClick={() => handlePro(u._id, "makePro")}>Give Pro</button> :
-                  <button onClick={() => handlePro(u._id, "revokePro")}>Revoke Pro</button>
-                }
+                <button onClick={()=>togglePro(u.email,!u.isPro)}>
+                  {u.isPro ? "Revoke Pro" : "Make Pro"}
+                </button>
               </td>
             </tr>
           ))}
