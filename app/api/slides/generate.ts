@@ -1,24 +1,28 @@
-import { NextApiRequest, NextApiResponse } from "next"
-import { Configuration, OpenAIApi } from "openai"
-import dbConnect from "@/lib/dbConnect"
-import User from "@/models/User"
-import Slide from "@/models/Slide"
-import { getToken } from "next-auth/jwt"
+import { NextApiRequest,NextApiResponse } from "next"
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "../auth/[...nextauth]"
 
-const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY })
-const openai = new OpenAIApi(configuration)
+const freeTemplates = ["Template 1","Template 2","Template 3"]
+const allTemplates = ["Template 1","Template 2","Template 3","Template 4","Template 5"]
 
 export default async function handler(req:NextApiRequest,res:NextApiResponse){
   if(req.method!=="POST") return res.status(405).json({error:"Method not allowed"})
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
-  if(!token) return res.status(401).json({error:"Unauthorized"})
-  await dbConnect()
-  const { title, audience, slidesCount } = req.body
-  try {
-    const prompt = `Mənə ${slidesCount} slayd üçün mətni hazırla, başlıq: ${title}, auditoriya: ${audience}`
-    const gpt = await openai.createChatCompletion({ model:"gpt-3.5-turbo", messages:[{role:"user",content:prompt}] })
-    const raw = gpt.data.choices[0].message?.content || ""
-    await Slide.create({ userId: token.sub, title, audience, slides:[raw] })
-    res.json({ ok:true, raw })
-  } catch(err:any){ console.error(err); res.status(500).json({ error:"Failed to generate slides" }) }
+  
+  const session = await getServerSession(req,res,authOptions)
+  if(!session) return res.status(401).json({error:"Unauthorized"})
+  
+  const { title,audience,slidesCount,template } = req.body
+  const isPro = session.user.isPro
+
+  if(!title || !audience || !slidesCount || !template) 
+    return res.status(400).json({error:"Missing fields"})
+
+  const availableTemplates = isPro ? allTemplates : freeTemplates
+  if(!availableTemplates.includes(template))
+    return res.status(403).json({error:"Template not allowed for your plan"})
+
+  const count = (!isPro && slidesCount>3)?3:slidesCount
+
+  const slides = Array.from({length:count},(_,i)=>`Slayd ${i+1}: ${title} - ${audience} (${template})`).join("\n\n")
+  res.status(200).json({raw:slides})
 }
